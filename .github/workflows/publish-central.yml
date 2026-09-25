@@ -13,7 +13,22 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Check publishing secrets
+        id: guard
+        shell: bash
+        run: |
+          if [ -n "$GPG_KEY" ] && [ -n "$OSSRH_USER" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Maven Central publish - GPG_PRIVATE_KEY / OSSRH_USERNAME not configured."
+          fi
+        env:
+          GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          OSSRH_USER: ${{ secrets.OSSRH_USERNAME }}
+
       - name: Setup Java 21
+        if: steps.guard.outputs.ready == 'true'
         uses: actions/setup-java@v4
         with:
           java-version: '21'
@@ -25,7 +40,8 @@ jobs:
           gpg-passphrase: GPG_PASSPHRASE
 
       - name: Publish to Maven Central
-        run: mvn -B deploy -DskipTests -DaltDeploymentRepository="ossrh::https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+        if: steps.guard.outputs.ready == 'true'
+        run: mvn -B -Prelease deploy -DskipTests -DaltDeploymentRepository="ossrh::https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
         env:
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
