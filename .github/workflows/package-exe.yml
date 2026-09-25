@@ -1,0 +1,77 @@
+name: Package Windows EXE
+
+# Builds the self-contained Windows .exe (jpackage app-image) for the JBuildPilot
+# interactive CLI and publishes it:
+#   - as a build artifact on every run, and
+#   - attached to the GitHub Release when triggered by a v* tag push.
+#
+# jpackage ships with the JDK, so no extra tooling is required on the runner.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for the .exe (e.g. 0.1.0)'
+        required: true
+        default: '0.1.0'
+        type: string
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  package:
+    name: Build & Package Windows EXE
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21 LTS
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "push") {
+            $full = "${{ github.ref_name }}" -replace '^v',''
+          } else {
+            $full = "${{ inputs.version }}"
+          }
+          # jpackage --app-version on Windows must be numeric (major[.minor[.patch]]).
+          if ($full -match '^(\d+(\.\d+){0,2})') { $app = $matches[1] } else { $app = '0.1.0' }
+          "version=$full"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "appversion=$app"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Full version: $full  |  jpackage app-version: $app"
+
+      - name: Build shaded CLI jar
+        shell: pwsh
+        run: mvn -B -pl jbuildpilot-cli -am package "-DskipTests" "-Djacoco.skip=true" "-Dgpg.skip=true" "-Dmaven.source.skip=true" "-Dmaven.javadoc.skip=true" "-Dmaven.compiler.fork=true"
+
+      - name: Run jpackage (app-image .exe)
+        shell: pwsh
+        run: .\package-exe.ps1 -Version ${{ steps.ver.outputs.appversion }}
+
+      - name: Zip app image
+        shell: pwsh
+        run: Compress-Archive -Path dist\JBuildPilot\* -DestinationPath "JBuildPilot-${{ steps.ver.outputs.version }}-windows.zip" -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JBuildPilot-${{ steps.ver.outputs.version }}-windows
+          path: JBuildPilot-${{ steps.ver.outputs.version }}-windows.zip
+          if-no-files-found: error
+
+      - name: Attach .exe zip to release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: JBuildPilot-${{ steps.ver.outputs.version }}-windows.zip

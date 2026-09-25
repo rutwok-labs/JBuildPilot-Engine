@@ -1,0 +1,27 @@
+name: 'JBuildPilot Maintenance Engine'
+description: 'Autonomous zero-trust Java project diagnosis and maintenance'
+author: 'Rutwok Labs'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  mode:
+    description: 'Execution mode (diagnose, plan, apply)'
+    required: true
+    default: 'diagnose'
+  github_token:
+    description: 'GitHub token for creating PRs and comments'
+    required: true
+    default: '${{ github.token }}'
+  task_id:
+    description: 'Optional specific task ID to apply (e.g. JB-001)'
+    required: false
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.mode }}
+    - ${{ inputs.task_id }}
+    - ${{ inputs.github_token }}

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# JBuildPilot CLI Wrapper
+
+mvn exec:java -pl jbuildpilot-cli -Dexec.mainClass="io.github.rutwoklabs.jbuildpilot.cli.JBuildPilotCli" -Dexec.args="$*" -q

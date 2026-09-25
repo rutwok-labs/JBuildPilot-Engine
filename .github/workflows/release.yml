@@ -1,0 +1,76 @@
+name: Release Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag / Version (e.g. 0.0.6)'
+        required: true
+        type: string
+      title:
+        description: 'Release Title (e.g. Phase 2: Project Analyzer)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release Notes (Paste your full Markdown here)'
+        required: true
+        type: string
+
+jobs:
+  verify:
+    name: Verify (Strict Test Gate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21 LTS
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Execute Unit Tests
+        run: mvn -B clean test
+
+  release:
+    name: Generate Tag & GitHub Release
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Git Identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and Push Tag
+        run: |
+          git tag v${{ inputs.version }}
+          git push origin v${{ inputs.version }}
+
+      - name: Setup Java 21 LTS
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build & Package (Skip Tests)
+        run: mvn -B clean package -DskipTests
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: ${{ inputs.title }}
+          body: ${{ inputs.release_notes }}
+          draft: false
+          prerelease: ${{ contains(inputs.version, 'alpha') || contains(inputs.version, 'beta') }}
+          files: |
+            **/target/*.jar

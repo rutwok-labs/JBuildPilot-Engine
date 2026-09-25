@@ -1,0 +1,56 @@
+name: 'JBuildPilot Maintenance Engine'
+
+on:
+  # Run automatically every Monday at 3 AM UTC
+  schedule:
+    - cron: '0 3 * * 1'
+  
+  # Allow manual triggering from the GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Engine Execution Mode'
+        required: true
+        default: 'diagnose'
+        type: choice
+        options:
+          - diagnose
+          - plan
+          - apply
+      task_id:
+        description: 'Specific Task ID to apply (e.g. JB-001). Required if mode is apply.'
+        required: false
+        type: string
+
+jobs:
+  maintenance:
+    name: Run Repository Maintenance
+    runs-on: ubuntu-latest
+    
+    # Required permissions to read the repo, create branches, open PRs, and comment on issues.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21 LTS
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+          
+      - name: Pre-build JBuildPilot (Self-Hosting)
+        # Because we are eating our own dog food, we must compile the engine first
+        run: mvn -B clean install -DskipTests
+
+      - name: Execute JBuildPilot Agent
+        uses: ./jbuildpilot-action
+        with:
+          mode: ${{ github.event.inputs.mode || 'diagnose' }}
+          task_id: ${{ github.event.inputs.task_id || '' }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

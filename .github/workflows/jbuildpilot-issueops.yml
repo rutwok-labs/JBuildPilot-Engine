@@ -1,0 +1,58 @@
+name: 'JBuildPilot IssueOps'
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  execute-task:
+    name: Execute Approved Task
+    # Only run if the comment starts with @jbuildpilot apply
+    if: startsWith(github.event.comment.body, '@jbuildpilot apply')
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21 LTS
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Pre-build JBuildPilot (Self-Hosting)
+        run: mvn -B clean install -DskipTests
+
+      - name: Parse Task ID
+        id: parse
+        # Extracts 'JB-xxx' from '@jbuildpilot apply JB-xxx'
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          TASK_ID=$(echo "$COMMENT" | awk '{print $3}')
+          echo "Extracted Task ID: $TASK_ID"
+          echo "task_id=$TASK_ID" >> $GITHUB_OUTPUT
+
+      - name: Execute JBuildPilot Apply
+        uses: ./jbuildpilot-action
+        with:
+          mode: 'apply'
+          task_id: ${{ steps.parse.outputs.task_id }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: React to Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            })
